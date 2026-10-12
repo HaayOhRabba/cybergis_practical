@@ -120,6 +120,19 @@ def _landform_to_png_bytes(lf_arr, valid_mask):
     return buf.getvalue()
 
 
+def _tpi_to_png_bytes(tpi_arr, valid_mask):
+    # Normalized between -15m (valleys) and +15m (ridges)
+    norm = np.clip((tpi_arr + 15.0) / 30.0, 0.0, 1.0)
+    colored = cm.coolwarm(norm)
+    rgba = (colored * 255.0).astype(np.uint8)
+    rgba[~valid_mask, 3] = 0
+
+    img = Image.fromarray(rgba, mode='RGBA')
+    buf = io.BytesIO()
+    img.save(buf, format='PNG')
+    return buf.getvalue()
+
+
 class CartoDEMTPIProcessor(BaseProcessor):
     """
     OGC API - Processes Processor for computing on-demand
@@ -233,7 +246,10 @@ class CartoDEMTPIProcessor(BaseProcessor):
                 valid_tpi = tpi[valid_mask]
                 valid_lf = landform[valid_mask]
 
-                png_bytes = _landform_to_png_bytes(landform, valid_mask)
+                if output_type == 'landform':
+                    png_bytes = _landform_to_png_bytes(landform, valid_mask)
+                else:
+                    png_bytes = _tpi_to_png_bytes(tpi, valid_mask)
 
                 if output_format == 'png':
                     return 'image/png', png_bytes
@@ -254,6 +270,9 @@ class CartoDEMTPIProcessor(BaseProcessor):
                         'status': 'success',
                         'source_tile': os.path.basename(dem_path),
                         'bbox': [c_min_lon, c_min_lat, c_max_lon, c_max_lat],
+                        'processed_bbox': [c_min_lon, c_min_lat, c_max_lon, c_max_lat],
+                        'raster_shape': {'height': tpi.shape[0], 'width': tpi.shape[1]},
+                        'crs': 'EPSG:4326',
                         'tpi_statistics': {
                             'min': float(np.min(valid_tpi)) if valid_tpi.size > 0 else 0.0,
                             'max': float(np.max(valid_tpi)) if valid_tpi.size > 0 else 0.0,

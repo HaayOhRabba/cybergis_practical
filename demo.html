@@ -762,8 +762,9 @@
         }
 
         // Render the raster overlay on the map
-        if (data.png_overlay && data.processed_bbox) {
-          const [cMinLon, cMinLat, cMaxLon, cMaxLat] = data.processed_bbox;
+        const procBbox = data.processed_bbox || data.bbox;
+        if (data.png_overlay && procBbox) {
+          const [cMinLon, cMinLat, cMaxLon, cMaxLat] = procBbox;
           const resultBounds = [[cMinLat, cMinLon], [cMaxLat, cMaxLon]];
 
           if (resultOverlayLayer) map.removeLayer(resultOverlayLayer);

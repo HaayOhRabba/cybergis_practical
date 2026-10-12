@@ -455,7 +455,7 @@ paths:
       description: OGC API - Processes service computing Terrain Ruggedness Index
         (TRI) on-the-fly over ISRO Bhoonidhi Cartosat-1 (CartoDEM 30m) elevation rasters.
         Allows users to request an arbitrary Bounding Box (BBOX) and receives analysis-ready
-        GeoTIFF rasters or zonal statistics without manual data egress.
+        GeoTIFF rasters, rendered PNG overlays, or zonal statistics.
       operationId: describeCartodem-triProcess
       parameters:
       - $ref: '#/components/parameters/f'
@@ -472,7 +472,7 @@ paths:
       description: OGC API - Processes service computing Terrain Ruggedness Index
         (TRI) on-the-fly over ISRO Bhoonidhi Cartosat-1 (CartoDEM 30m) elevation rasters.
         Allows users to request an arbitrary Bounding Box (BBOX) and receives analysis-ready
-        GeoTIFF rasters or zonal statistics without manual data egress.
+        GeoTIFF rasters, rendered PNG overlays, or zonal statistics.
       operationId: executeCartodem-triJob
       parameters:
       - description: Indicates client preferences, including whether the client is
