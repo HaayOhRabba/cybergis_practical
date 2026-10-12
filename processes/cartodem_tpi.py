@@ -3,12 +3,16 @@ OGC API - Processes implementation: Topographic Position Index (TPI) & Landform 
 Author: Chaitanya Soni (CyberGIS Practical Assignment)
 """
 
+import io
 import os
 import glob
+import base64
 import logging
 import numpy as np
 import rasterio
 from rasterio.windows import from_bounds
+from PIL import Image
+import matplotlib.cm as cm
 
 from pygeoapi.process.base import BaseProcessor, ProcessorExecuteError
 
@@ -62,10 +66,10 @@ PROCESS_METADATA = {
         },
         'format': {
             'title': {'en': 'Output Format'},
-            'description': {'en': 'Requested output response format: "geotiff" or "json".'},
+            'description': {'en': 'Requested output response format: "geotiff", "png", or "json".'},
             'schema': {
                 'type': 'string',
-                'enum': ['geotiff', 'json'],
+                'enum': ['geotiff', 'png', 'json'],
                 'default': 'geotiff'
             },
             'minOccurs': 0,
@@ -75,7 +79,7 @@ PROCESS_METADATA = {
     'outputs': {
         'tpi_result': {
             'title': {'en': 'TPI / Landform Output'},
-            'description': {'en': 'GeoTIFF raster or statistical summary report'},
+            'description': {'en': 'GeoTIFF raster, PNG image, or statistical summary report'},
             'schema': {
                 'type': 'object',
                 'contentMediaType': 'image/tiff'
@@ -90,6 +94,30 @@ PROCESS_METADATA = {
         }
     }
 }
+
+# 6 distinct contrasting colors for landforms
+LANDFORM_PALETTE = {
+    1: [30, 64, 175, 255],    # Deep Canyon / Valley: Blue
+    2: [6, 182, 212, 255],    # Lower Slope: Cyan
+    3: [34, 197, 94, 255],    # Flat Plain: Green
+    4: [245, 158, 11, 255],   # Middle Slope: Amber
+    5: [249, 115, 22, 255],   # Upper Slope: Orange
+    6: [220, 38, 38, 255],    # Ridge / Peak: Red
+}
+
+
+def _landform_to_png_bytes(lf_arr, valid_mask):
+    h, w = lf_arr.shape
+    rgba = np.zeros((h, w, 4), dtype=np.uint8)
+    for class_id, color in LANDFORM_PALETTE.items():
+        mask = (lf_arr == class_id) & valid_mask
+        rgba[mask] = color
+    rgba[~valid_mask, 3] = 0
+
+    img = Image.fromarray(rgba, mode='RGBA')
+    buf = io.BytesIO()
+    img.save(buf, format='PNG')
+    return buf.getvalue()
 
 
 class CartoDEMTPIProcessor(BaseProcessor):
@@ -130,7 +158,6 @@ class CartoDEMTPIProcessor(BaseProcessor):
         tpi = center - mean_neighbor
         tpi[~valid_mask] = -9999.0
 
-        # Horn's method slope (degrees)
         dz_dx = (
             (dem_window[0:-2, 2:] + 2*dem_window[1:-1, 2:] + dem_window[2:, 2:]) -
             (dem_window[0:-2, 0:-2] + 2*dem_window[1:-1, 0:-2] + dem_window[2:, 0:-2])
@@ -147,13 +174,6 @@ class CartoDEMTPIProcessor(BaseProcessor):
         if std_tpi == 0:
             std_tpi = 1.0
 
-        # Weiss 6-class landform classification:
-        # 1: Canyon / Deep Valley (TPI <= -1.0 std)
-        # 2: Lower Slope (-1.0 std < TPI <= -0.5 std)
-        # 3: Flat Plain (-0.5 std < TPI < 0.5 std & slope <= 5 deg)
-        # 4: Middle Slope (-0.5 std < TPI < 0.5 std & slope > 5 deg)
-        # 5: Upper Slope (0.5 std <= TPI < 1.0 std)
-        # 6: Ridge / Peak (TPI >= 1.0 std)
         landform = np.zeros_like(center, dtype=np.int16)
         landform[tpi <= -1.0 * std_tpi] = 1
         landform[(tpi > -1.0 * std_tpi) & (tpi <= -0.5 * std_tpi)] = 2
@@ -170,7 +190,7 @@ class CartoDEMTPIProcessor(BaseProcessor):
 
         bbox = data.get('bbox', [78.35, 17.35, 78.55, 17.55])
         min_lon, min_lat, max_lon, max_lat = [float(x) for x in bbox]
-        output_type = str(data.get('output_type', 'tpi')).lower()
+        output_type = str(data.get('output_type', 'landform')).lower()
         output_format = str(data.get('format', 'geotiff')).lower()
 
         dem_path = self._find_cartodem_file()
@@ -213,6 +233,11 @@ class CartoDEMTPIProcessor(BaseProcessor):
                 valid_tpi = tpi[valid_mask]
                 valid_lf = landform[valid_mask]
 
+                png_bytes = _landform_to_png_bytes(landform, valid_mask)
+
+                if output_format == 'png':
+                    return 'image/png', png_bytes
+
                 if output_format == 'json':
                     lf_classes = {
                         '1_deep_valley_pct': round(float(np.sum(valid_lf == 1) / valid_lf.size * 100.0), 2) if valid_lf.size > 0 else 0,
@@ -222,6 +247,7 @@ class CartoDEMTPIProcessor(BaseProcessor):
                         '5_upper_slope_pct': round(float(np.sum(valid_lf == 5) / valid_lf.size * 100.0), 2) if valid_lf.size > 0 else 0,
                         '6_ridge_pct': round(float(np.sum(valid_lf == 6) / valid_lf.size * 100.0), 2) if valid_lf.size > 0 else 0,
                     }
+                    b64_png = base64.b64encode(png_bytes).decode('ascii')
                     return 'application/json', {
                         'process_id': 'cartodem-tpi',
                         'product': output_type,
@@ -234,7 +260,8 @@ class CartoDEMTPIProcessor(BaseProcessor):
                             'mean': float(np.mean(valid_tpi)) if valid_tpi.size > 0 else 0.0,
                             'std': float(np.std(valid_tpi)) if valid_tpi.size > 0 else 0.0
                         },
-                        'landform_distribution': lf_classes
+                        'landform_distribution': lf_classes,
+                        'png_overlay': f"data:image/png;base64,{b64_png}"
                     }
 
                 # Return GeoTIFF

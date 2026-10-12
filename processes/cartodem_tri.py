@@ -6,10 +6,13 @@ Author: Chaitanya Soni (CyberGIS Practical Assignment)
 import io
 import os
 import glob
+import base64
 import logging
 import numpy as np
 import rasterio
 from rasterio.windows import from_bounds
+from PIL import Image
+import matplotlib.cm as cm
 
 from pygeoapi.process.base import BaseProcessor, ProcessorExecuteError
 
@@ -25,7 +28,7 @@ PROCESS_METADATA = {
         'en': 'OGC API - Processes service computing Terrain Ruggedness Index (TRI) '
               'on-the-fly over ISRO Bhoonidhi Cartosat-1 (CartoDEM 30m) elevation rasters. '
               'Allows users to request an arbitrary Bounding Box (BBOX) and receives '
-              'analysis-ready GeoTIFF rasters or zonal statistics without manual data egress.'
+              'analysis-ready GeoTIFF rasters, rendered PNG overlays, or zonal statistics.'
     },
     'jobControlOptions': ['sync-execute', 'async-execute'],
     'keywords': [
@@ -92,10 +95,10 @@ PROCESS_METADATA = {
         },
         'format': {
             'title': {'en': 'Output Format'},
-            'description': {'en': 'Requested output response format: "geotiff" (binary GeoTIFF stream) or "json" (statistical summary report).'},
+            'description': {'en': 'Requested output response format: "geotiff", "png", or "json".'},
             'schema': {
                 'type': 'string',
-                'enum': ['geotiff', 'json'],
+                'enum': ['geotiff', 'png', 'json'],
                 'default': 'geotiff'
             },
             'minOccurs': 0,
@@ -105,7 +108,7 @@ PROCESS_METADATA = {
     'outputs': {
         'tri_result': {
             'title': {'en': 'Terrain Ruggedness Output'},
-            'description': {'en': 'Computed TRI GeoTIFF raster or statistical summary report'},
+            'description': {'en': 'Computed TRI GeoTIFF raster, PNG image, or statistical summary report'},
             'schema': {
                 'type': 'object',
                 'contentMediaType': 'image/tiff'
@@ -122,6 +125,19 @@ PROCESS_METADATA = {
 }
 
 
+def _tri_to_png_bytes(tri_arr, valid_mask, max_val=40.0):
+    """Encodes a TRI float array to transparent colormapped PNG bytes."""
+    norm = np.clip(tri_arr / max_val, 0.0, 1.0)
+    colored = cm.turbo(norm)  # (H, W, 4) float in [0, 1]
+    rgba = (colored * 255.0).astype(np.uint8)
+    rgba[~valid_mask, 3] = 0  # Transparent for NoData
+
+    img = Image.fromarray(rgba, mode='RGBA')
+    buf = io.BytesIO()
+    img.save(buf, format='PNG')
+    return buf.getvalue()
+
+
 class CartoDEMTRIProcessor(BaseProcessor):
     """
     OGC API - Processes Processor for computing on-demand
@@ -134,18 +150,12 @@ class CartoDEMTRIProcessor(BaseProcessor):
         self.data_dir = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'data')
 
     def _find_cartodem_file(self):
-        """Locates the CartoDEM GeoTIFF file in data directory."""
         tif_files = glob.glob(os.path.join(self.data_dir, '*.tif')) + glob.glob(os.path.join(self.data_dir, '*.tiff'))
         if not tif_files:
             raise ProcessorExecuteError(f"No CartoDEM GeoTIFF files found in {self.data_dir}")
         return tif_files[0]
 
     def _compute_tri(self, dem_window, metric='riley', nodata_val=-32768.0):
-        """
-        Computes Terrain Ruggedness Index on the inner slice of a buffered window.
-        Input dem_window: shape (H+2, W+2)
-        Output tri: shape (H, W)
-        """
         center = dem_window[1:-1, 1:-1]
         valid_mask = (center != nodata_val) & ~np.isnan(center)
 
@@ -165,7 +175,6 @@ class CartoDEMTRIProcessor(BaseProcessor):
             tri = np.where(count > 0, abs_sum / count, -9999.0)
             tri[~valid_mask] = -9999.0
         else:
-            # Riley et al. 1999: sqrt(sum((z_i - z_0)^2))
             sq_sum = np.zeros_like(center, dtype=np.float32)
             for dy in (-1, 0, 1):
                 for dx in (-1, 0, 1):
@@ -184,7 +193,6 @@ class CartoDEMTRIProcessor(BaseProcessor):
     def execute(self, data, outputs=None):
         LOGGER.info(f"Executing CartoDEM TRI Processor with input data: {data}")
 
-        # Parse Bounding Box
         bbox = data.get('bbox')
         if bbox is None:
             min_lon = data.get('min_lon')
@@ -194,7 +202,6 @@ class CartoDEMTRIProcessor(BaseProcessor):
             if all(v is not None for v in [min_lon, min_lat, max_lon, max_lat]):
                 bbox = [float(min_lon), float(min_lat), float(max_lon), float(max_lat)]
             else:
-                # Default sample window over Hyderabad / Telangana tile (N17_E078)
                 bbox = [78.35, 17.35, 78.55, 17.55]
 
         min_lon, min_lat, max_lon, max_lat = [float(x) for x in bbox]
@@ -206,14 +213,11 @@ class CartoDEMTRIProcessor(BaseProcessor):
             metric = 'riley'
 
         output_format = str(data.get('format', 'geotiff')).lower()
-
         dem_path = self._find_cartodem_file()
-        LOGGER.info(f"Using source CartoDEM tile: {dem_path}")
 
         try:
             with rasterio.open(dem_path) as src:
                 bounds = src.bounds
-                # Check spatial overlap
                 if (max_lon < bounds.left or min_lon > bounds.right or
                         max_lat < bounds.bottom or min_lat > bounds.top):
                     raise ProcessorExecuteError(
@@ -222,13 +226,11 @@ class CartoDEMTRIProcessor(BaseProcessor):
                         f"{bounds.right:.4f}, {bounds.top:.4f}]."
                     )
 
-                # Clamp to tile boundary
                 c_min_lon = max(min_lon, bounds.left)
                 c_min_lat = max(min_lat, bounds.bottom)
                 c_max_lon = min(max_lon, bounds.right)
                 c_max_lat = min(max_lat, bounds.top)
 
-                # Calculate inner target window using robust offsets
                 raw_window = from_bounds(c_min_lon, c_min_lat, c_max_lon, c_max_lat, src.transform)
                 col_off = max(0, int(np.floor(raw_window.col_off)))
                 row_off = max(0, int(np.floor(raw_window.row_off)))
@@ -236,12 +238,8 @@ class CartoDEMTRIProcessor(BaseProcessor):
                 height = int(np.ceil(raw_window.height))
 
                 if width < 3 or height < 3:
-                    raise ProcessorExecuteError(
-                        f"Requested region is too small ({width}x{height} pixels). "
-                        f"Minimum 3x3 pixels required for 3x3 neighborhood TRI."
-                    )
+                    raise ProcessorExecuteError(f"Requested region too small ({width}x{height} pixels). Minimum 3x3.")
 
-                # Add 1-pixel buffer for neighborhood calculation
                 buffered_col_off = max(0, col_off - 1)
                 buffered_row_off = max(0, row_off - 1)
                 buffered_width = min(src.width - buffered_col_off, width + 2)
@@ -254,10 +252,8 @@ class CartoDEMTRIProcessor(BaseProcessor):
                 dem_data = src.read(1, window=buffered_window)
                 src_nodata = src.nodata if src.nodata is not None else -32768.0
 
-                # Compute TRI
                 tri, valid_mask = self._compute_tri(dem_data, metric=metric, nodata_val=src_nodata)
 
-                # Compute affine transform for unbuffered inner region
                 inner_transform = rasterio.windows.transform(
                     rasterio.windows.Window(col_off, row_off, tri.shape[1], tri.shape[0]),
                     src.transform
@@ -273,7 +269,6 @@ class CartoDEMTRIProcessor(BaseProcessor):
                     'total_pixels': int(tri.size)
                 }
 
-                # Ruggedness class breakdown based on Riley et al. thresholds
                 if valid_tri.size > 0:
                     c_level = float(np.sum(valid_tri < 5.0) / valid_tri.size * 100.0)
                     c_slight = float(np.sum((valid_tri >= 5.0) & (valid_tri < 15.0)) / valid_tri.size * 100.0)
@@ -291,8 +286,13 @@ class CartoDEMTRIProcessor(BaseProcessor):
                     'extremely_rugged_pct': round(c_extreme, 2)
                 }
 
+                png_bytes = _tri_to_png_bytes(tri, valid_mask)
+
+                if output_format == 'png':
+                    return 'image/png', png_bytes
+
                 if output_format == 'json':
-                    mimetype = 'application/json'
+                    b64_png = base64.b64encode(png_bytes).decode('ascii')
                     response_payload = {
                         'process_id': 'cartodem-tri',
                         'title': 'Bhoonidhi CartoDEM Terrain Ruggedness Index',
@@ -305,11 +305,11 @@ class CartoDEMTRIProcessor(BaseProcessor):
                         'crs': 'EPSG:4326',
                         'statistics': stats,
                         'ruggedness_classification': class_breakdown,
-                        'note': 'For binary raster output, send {"format": "geotiff"}'
+                        'png_overlay': f"data:image/png;base64,{b64_png}"
                     }
-                    return mimetype, response_payload
+                    return 'application/json', response_payload
 
-                # Default: return GeoTIFF
+                # GeoTIFF
                 out_meta = {
                     'driver': 'GTiff',
                     'height': tri.shape[0],
@@ -327,8 +327,7 @@ class CartoDEMTRIProcessor(BaseProcessor):
                         dst.write(tri.astype(np.float32), 1)
                     geotiff_bytes = memfile.read()
 
-                mimetype = 'image/tiff'
-                return mimetype, geotiff_bytes
+                return 'image/tiff', geotiff_bytes
 
         except ProcessorExecuteError:
             raise
