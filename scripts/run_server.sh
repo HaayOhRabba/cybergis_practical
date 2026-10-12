@@ -18,6 +18,5 @@ export PYTHONPATH="$DIR:$PYTHONPATH"
 echo "[*] Generating OpenAPI specification..."
 "$DIR/.venv/bin/pygeoapi" openapi generate "$PYGEOAPI_CONFIG" --output-file "$PYGEOAPI_OPENAPI"
 
-echo "[*] Starting pygeoapi server on http://localhost:5000 ..."
-echo "Press Ctrl+C to stop."
-exec "$DIR/.venv/bin/pygeoapi" serve --flask
+echo "[*] Launching server..."
+exec "$DIR/.venv/bin/python" "$DIR/server.py"

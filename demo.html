@@ -1,0 +1,665 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Bhoonidhi CartoDEM - OGC API Processes Interactive Client</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <!-- Leaflet CSS -->
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+  <style>
+    :root {
+      --bg-primary: #0a0e17;
+      --bg-surface: #121826;
+      --bg-card: #182234;
+      --border-color: #23304a;
+      --accent-blue: #3b82f6;
+      --accent-cyan: #06b6d4;
+      --accent-emerald: #10b981;
+      --accent-amber: #f59e0b;
+      --text-main: #f1f5f9;
+      --text-muted: #94a3b8;
+    }
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    body {
+      font-family: 'Inter', -apple-system, sans-serif;
+      background: var(--bg-primary);
+      color: var(--text-main);
+      display: flex;
+      flex-direction: column;
+      height: 100vh;
+      overflow: hidden;
+    }
+
+    header {
+      background: rgba(18, 24, 38, 0.95);
+      backdrop-filter: blur(8px);
+      border-bottom: 1px solid var(--border-color);
+      padding: 12px 24px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      z-index: 1000;
+    }
+
+    .brand {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+
+    .badge-ogc {
+      background: linear-gradient(135deg, #2563eb, #06b6d4);
+      color: white;
+      font-size: 0.75rem;
+      font-weight: 700;
+      padding: 4px 8px;
+      border-radius: 6px;
+      letter-spacing: 0.5px;
+    }
+
+    .brand h1 {
+      font-size: 1.15rem;
+      font-weight: 600;
+      letter-spacing: -0.3px;
+    }
+
+    .brand span {
+      color: var(--text-muted);
+      font-size: 0.85rem;
+    }
+
+    .status-pill {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      font-size: 0.8rem;
+      padding: 6px 14px;
+      border-radius: 9999px;
+      background: rgba(16, 185, 129, 0.1);
+      border: 1px solid rgba(16, 185, 129, 0.3);
+      color: #34d399;
+    }
+
+    .status-dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: #10b981;
+      box-shadow: 0 0 10px #10b981;
+      animation: pulse 2s infinite;
+    }
+
+    @keyframes pulse {
+      0%, 100% { opacity: 1; transform: scale(1); }
+      50% { opacity: 0.5; transform: scale(0.9); }
+    }
+
+    .main-container {
+      display: flex;
+      flex: 1;
+      height: calc(100vh - 61px);
+      position: relative;
+    }
+
+    /* Map side */
+    #map {
+      flex: 1;
+      height: 100%;
+      background: #0d131f;
+    }
+
+    /* Sidebar controls */
+    .sidebar {
+      width: 440px;
+      background: var(--bg-surface);
+      border-left: 1px solid var(--border-color);
+      display: flex;
+      flex-direction: column;
+      height: 100%;
+      overflow-y: auto;
+      z-index: 500;
+    }
+
+    .panel-section {
+      padding: 18px 20px;
+      border-bottom: 1px solid var(--border-color);
+    }
+
+    .section-title {
+      font-size: 0.85rem;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      color: var(--text-muted);
+      font-weight: 700;
+      margin-bottom: 14px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+
+    .form-group {
+      margin-bottom: 14px;
+    }
+
+    .form-group:last-child {
+      margin-bottom: 0;
+    }
+
+    label {
+      display: block;
+      font-size: 0.82rem;
+      font-weight: 500;
+      color: #cbd5e1;
+      margin-bottom: 6px;
+    }
+
+    select, input {
+      width: 100%;
+      background: var(--bg-card);
+      border: 1px solid var(--border-color);
+      color: var(--text-main);
+      padding: 8px 12px;
+      border-radius: 6px;
+      font-size: 0.85rem;
+      font-family: inherit;
+      outline: none;
+      transition: all 0.2s;
+    }
+
+    select:focus, input:focus {
+      border-color: var(--accent-blue);
+      box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.2);
+    }
+
+    .bbox-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 8px;
+    }
+
+    .btn-preset {
+      font-size: 0.75rem;
+      padding: 4px 8px;
+      background: rgba(59, 130, 246, 0.1);
+      border: 1px solid rgba(59, 130, 246, 0.3);
+      color: #93c5fd;
+      border-radius: 4px;
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+
+    .btn-preset:hover {
+      background: rgba(59, 130, 246, 0.25);
+    }
+
+    .btn-submit {
+      width: 100%;
+      background: linear-gradient(135deg, #2563eb, #0284c7);
+      color: white;
+      border: none;
+      padding: 12px;
+      font-size: 0.92rem;
+      font-weight: 600;
+      border-radius: 8px;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      transition: all 0.2s;
+      box-shadow: 0 4px 14px rgba(37, 99, 235, 0.3);
+    }
+
+    .btn-submit:hover:not(:disabled) {
+      transform: translateY(-1px);
+      box-shadow: 0 6px 20px rgba(37, 99, 235, 0.4);
+    }
+
+    .btn-submit:disabled {
+      opacity: 0.6;
+      cursor: not-allowed;
+    }
+
+    /* Stats display */
+    .stat-cards {
+      display: grid;
+      grid-template-columns: 1fr 1fr 1fr;
+      gap: 8px;
+      margin-bottom: 14px;
+    }
+
+    .stat-card {
+      background: var(--bg-card);
+      border: 1px solid var(--border-color);
+      padding: 10px;
+      border-radius: 6px;
+      text-align: center;
+    }
+
+    .stat-card .val {
+      font-size: 1.15rem;
+      font-weight: 700;
+      color: var(--accent-cyan);
+    }
+
+    .stat-card .lbl {
+      font-size: 0.72rem;
+      color: var(--text-muted);
+      margin-top: 2px;
+    }
+
+    /* Progress bars for classification */
+    .class-item {
+      margin-bottom: 8px;
+    }
+
+    .class-header {
+      display: flex;
+      justify-content: space-between;
+      font-size: 0.78rem;
+      margin-bottom: 3px;
+    }
+
+    .class-bar-bg {
+      background: #1e293b;
+      height: 6px;
+      border-radius: 3px;
+      overflow: hidden;
+    }
+
+    .class-bar-fill {
+      height: 100%;
+      border-radius: 3px;
+      transition: width 0.6s ease;
+    }
+
+    .fill-level { background: #10b981; }
+    .fill-slight { background: #3b82f6; }
+    .fill-moderate { background: #f59e0b; }
+    .fill-high { background: #ef4444; }
+    .fill-extreme { background: #8b5cf6; }
+
+    pre.code-viewer {
+      background: #080c14;
+      border: 1px solid var(--border-color);
+      border-radius: 6px;
+      padding: 10px;
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 0.74rem;
+      color: #94a3b8;
+      max-height: 160px;
+      overflow-y: auto;
+      white-space: pre-wrap;
+    }
+
+    .info-box {
+      background: rgba(59, 130, 246, 0.08);
+      border-left: 3px solid var(--accent-blue);
+      padding: 10px 12px;
+      border-radius: 0 6px 6px 0;
+      font-size: 0.78rem;
+      color: #93c5fd;
+      line-height: 1.4;
+    }
+  </style>
+</head>
+<body>
+
+  <header>
+    <div class="brand">
+      <span class="badge-ogc">OGC API</span>
+      <div>
+        <h1>Bhoonidhi CartoDEM Geoprocessing Service</h1>
+        <span>On-Demand Terrain Ruggedness Index (TRI) &bull; ISRO Cartosat-1 30m</span>
+      </div>
+    </div>
+    <div class="status-pill" id="server-status">
+      <div class="status-dot"></div>
+      <span id="server-status-text">Connecting to OGC Service...</span>
+    </div>
+  </header>
+
+  <div class="main-container">
+    <div id="map"></div>
+
+    <div class="sidebar">
+      <!-- Section 1: Process Selector -->
+      <div class="panel-section">
+        <div class="section-title">
+          <span>1. OGC Process Selection</span>
+        </div>
+        <div class="form-group">
+          <label for="process-select">Target Process</label>
+          <select id="process-select" onchange="handleProcessChange()">
+            <option value="cartodem-tri" selected>cartodem-tri (Terrain Ruggedness Index)</option>
+            <option value="cartodem-tpi">cartodem-tpi (TPI & Landform Classification)</option>
+          </select>
+        </div>
+
+        <div class="form-group" id="metric-group">
+          <label for="metric-select">Ruggedness Algorithm</label>
+          <select id="metric-select">
+            <option value="riley" selected>Riley et al. (1999) - Root Mean Squared</option>
+            <option value="wilson">Wilson et al. (2007) - Mean Absolute Difference</option>
+          </select>
+        </div>
+
+        <div class="form-group" id="landform-group" style="display: none;">
+          <label for="landform-product">Product Type</label>
+          <select id="landform-product">
+            <option value="tpi">Continuous TPI (Topographic Position Index)</option>
+            <option value="landform" selected>Discrete 6-Class Landform Classification</option>
+          </select>
+        </div>
+
+        <div class="form-group">
+          <label for="format-select">Response Format</label>
+          <select id="format-select">
+            <option value="json" selected>JSON Summary (Statistics & Zonal Classes)</option>
+            <option value="geotiff">GeoTIFF Stream (Binary Raster File)</option>
+          </select>
+        </div>
+      </div>
+
+      <!-- Section 2: Spatial Region of Interest -->
+      <div class="panel-section">
+        <div class="section-title">
+          <span>2. Geographic Bounding Box (WGS84)</span>
+          <button class="btn-preset" onclick="setPreset('hyderabad')">Reset ROI</button>
+        </div>
+
+        <div class="bbox-grid">
+          <div class="form-group">
+            <label>Min Lon (&deg;E)</label>
+            <input type="number" id="min_lon" step="0.01" value="78.35" onchange="updateBboxFromInputs()">
+          </div>
+          <div class="form-group">
+            <label>Min Lat (&deg;N)</label>
+            <input type="number" id="min_lat" step="0.01" value="17.35" onchange="updateBboxFromInputs()">
+          </div>
+          <div class="form-group">
+            <label>Max Lon (&deg;E)</label>
+            <input type="number" id="max_lon" step="0.01" value="78.55" onchange="updateBboxFromInputs()">
+          </div>
+          <div class="form-group">
+            <label>Max Lat (&deg;N)</label>
+            <input type="number" id="max_lat" step="0.01" value="17.55" onchange="updateBboxFromInputs()">
+          </div>
+        </div>
+
+        <div class="info-box" style="margin-top: 12px;">
+          <strong>Tile Coverage:</strong> IRS-P5 CartoDEM 30m Tile (78.0&deg;&ndash;79.0&deg;E, 17.0&deg;&ndash;18.0&deg;N) covering the Hyderabad & Telangana region.
+        </div>
+      </div>
+
+      <!-- Action Button -->
+      <div class="panel-section">
+        <button class="btn-submit" id="btn-execute" onclick="executeProcess()">
+          <span>&#9881; Execute OGC Process</span>
+        </button>
+      </div>
+
+      <!-- Section 3: Live Output -->
+      <div class="panel-section" id="results-panel" style="flex: 1;">
+        <div class="section-title">
+          <span>3. Geoprocessing Results</span>
+          <span id="latency-tag" style="font-size: 0.75rem; color: #34d399;"></span>
+        </div>
+
+        <div id="stat-cards-container" style="display: none;">
+          <div class="stat-cards">
+            <div class="stat-card">
+              <div class="val" id="stat-min">-</div>
+              <div class="lbl">Min Ruggedness</div>
+            </div>
+            <div class="stat-card">
+              <div class="val" id="stat-mean">-</div>
+              <div class="lbl">Mean TRI (m)</div>
+            </div>
+            <div class="stat-card">
+              <div class="val" id="stat-max">-</div>
+              <div class="lbl">Max Ruggedness</div>
+            </div>
+          </div>
+
+          <div style="margin-bottom: 14px;">
+            <div style="font-size: 0.78rem; font-weight: 600; color: #cbd5e1; margin-bottom: 8px;">
+              Terrain Classification Breakdown:
+            </div>
+            <div id="classification-bars"></div>
+          </div>
+        </div>
+
+        <div id="download-box" style="display: none; margin-bottom: 14px;">
+          <a id="download-link" href="#" class="btn-submit" style="background: linear-gradient(135deg, #10b981, #059669); text-decoration: none;" download="cartodem_tri.tif">
+            <span>&#11015; Download Resulting GeoTIFF</span>
+          </a>
+        </div>
+
+        <div class="section-title" style="margin-top: 14px;">
+          <span>Raw OGC Response</span>
+        </div>
+        <pre class="code-viewer" id="raw-response">// Awaiting execution request...</pre>
+      </div>
+    </div>
+  </div>
+
+  <!-- Leaflet JS -->
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <script>
+    const SERVICE_URL = 'http://localhost:5000';
+    let map, bboxRectangle;
+
+    // Initialize Map
+    function initMap() {
+      map = L.map('map', {
+        zoomControl: true
+      }).setView([17.45, 78.45], 11);
+
+      // Dark Matter Carto Tiles for professional CyberGIS aesthetic
+      L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
+        attribution: '&copy; <a href="https://openstreetmap.org">OpenStreetMap</a> &copy; <a href="https://carto.com/">CARTO</a>',
+        maxZoom: 19
+      }).addTo(map);
+
+      // CartoDEM Tile Extent Boundary
+      const tileBounds = [[17.0, 78.0], [18.0, 79.0]];
+      L.rectangle(tileBounds, {
+        color: '#06b6d4',
+        weight: 1.5,
+        dashArray: '4, 6',
+        fill: false
+      }).addTo(map).bindPopup('ISRO Bhoonidhi CartoDEM Tile Extent (N17_E078)');
+
+      // User Selection Bounding Box
+      drawBboxRectangle(17.35, 78.35, 17.55, 78.55);
+
+      checkServerHealth();
+    }
+
+    function drawBboxRectangle(minLat, minLon, maxLat, maxLon) {
+      if (bboxRectangle) map.removeLayer(bboxRectangle);
+
+      const bounds = [[minLat, minLon], [maxLat, maxLon]];
+      bboxRectangle = L.rectangle(bounds, {
+        color: '#3b82f6',
+        weight: 2,
+        fillColor: '#3b82f6',
+        fillOpacity: 0.15
+      }).addTo(map);
+    }
+
+    function updateBboxFromInputs() {
+      const minLon = parseFloat(document.getElementById('min_lon').value);
+      const minLat = parseFloat(document.getElementById('min_lat').value);
+      const maxLon = parseFloat(document.getElementById('max_lon').value);
+      const maxLat = parseFloat(document.getElementById('max_lat').value);
+
+      if (minLon < maxLon && minLat < maxLat) {
+        drawBboxRectangle(minLat, minLon, maxLat, maxLon);
+        map.fitBounds([[minLat, minLon], [maxLat, maxLon]], { padding: [20, 20] });
+      }
+    }
+
+    function setPreset(preset) {
+      if (preset === 'hyderabad') {
+        document.getElementById('min_lon').value = 78.35;
+        document.getElementById('min_lat').value = 17.35;
+        document.getElementById('max_lon').value = 78.55;
+        document.getElementById('max_lat').value = 17.55;
+        updateBboxFromInputs();
+      }
+    }
+
+    function handleProcessChange() {
+      const proc = document.getElementById('process-select').value;
+      if (proc === 'cartodem-tri') {
+        document.getElementById('metric-group').style.display = 'block';
+        document.getElementById('landform-group').style.display = 'none';
+      } else {
+        document.getElementById('metric-group').style.display = 'none';
+        document.getElementById('landform-group').style.display = 'block';
+      }
+    }
+
+    async function checkServerHealth() {
+      const statusPill = document.getElementById('server-status');
+      const statusText = document.getElementById('server-status-text');
+      try {
+        const res = await fetch(`${SERVICE_URL}/?f=json`);
+        if (res.ok) {
+          statusText.textContent = 'OGC Service Online (Port 5000)';
+        } else {
+          statusPill.style.color = '#f59e0b';
+          statusText.textContent = `Server Status: ${res.status}`;
+        }
+      } catch (err) {
+        statusPill.style.background = 'rgba(239, 68, 68, 0.1)';
+        statusPill.style.borderColor = 'rgba(239, 68, 68, 0.3)';
+        statusPill.style.color = '#f87171';
+        statusText.textContent = 'Service Offline (Run run_server.sh)';
+      }
+    }
+
+    async function executeProcess() {
+      const btn = document.getElementById('btn-execute');
+      const processId = document.getElementById('process-select').value;
+      const format = document.getElementById('format-select').value;
+      const minLon = parseFloat(document.getElementById('min_lon').value);
+      const minLat = parseFloat(document.getElementById('min_lat').value);
+      const maxLon = parseFloat(document.getElementById('max_lon').value);
+      const maxLat = parseFloat(document.getElementById('max_lat').value);
+
+      const payload = {
+        inputs: {
+          bbox: [minLon, minLat, maxLon, maxLat],
+          format: format
+        }
+      };
+
+      if (processId === 'cartodem-tri') {
+        payload.inputs.metric = document.getElementById('metric-select').value;
+      } else {
+        payload.inputs.output_type = document.getElementById('landform-product').value;
+      }
+
+      btn.disabled = true;
+      btn.innerHTML = '<span>&#8987; Computing On-Demand...</span>';
+      document.getElementById('raw-response').textContent = '// Executing OGC API request...\nPOST ' + `${SERVICE_URL}/processes/${processId}/execution\n` + JSON.stringify(payload, null, 2);
+
+      const startTime = performance.now();
+
+      try {
+        const response = await fetch(`${SERVICE_URL}/processes/${processId}/execution`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload)
+        });
+
+        const elapsed = ((performance.now() - startTime) / 1000).toFixed(2);
+        document.getElementById('latency-tag').textContent = `Computed in ${elapsed}s`;
+
+        if (format === 'geotiff') {
+          const blob = await response.blob();
+          const downloadUrl = URL.createObjectURL(blob);
+          const dlLink = document.getElementById('download-link');
+          dlLink.href = downloadUrl;
+          dlLink.download = `${processId}_clipped.tif`;
+          document.getElementById('download-box').style.display = 'block';
+          document.getElementById('stat-cards-container').style.display = 'none';
+          document.getElementById('raw-response').textContent = `HTTP ${response.status} OK\nContent-Type: ${response.headers.get('Content-Type')}\nPayload Size: ${blob.size.toLocaleString()} bytes\nGeoTIFF binary received successfully! Click download above.`;
+        } else {
+          const data = await response.json();
+          document.getElementById('download-box').style.display = 'none';
+          document.getElementById('stat-cards-container').style.display = 'block';
+          document.getElementById('raw-response').textContent = JSON.stringify(data, null, 2);
+
+          if (data.statistics) {
+            document.getElementById('stat-min').textContent = data.statistics.min.toFixed(1);
+            document.getElementById('stat-mean').textContent = data.statistics.mean.toFixed(1);
+            document.getElementById('stat-max').textContent = data.statistics.max.toFixed(1);
+          }
+
+          if (data.ruggedness_classification) {
+            renderClassificationBars(data.ruggedness_classification);
+          } else if (data.landform_distribution) {
+            renderLandformBars(data.landform_distribution);
+          }
+        }
+      } catch (err) {
+        document.getElementById('raw-response').textContent = `Error executing process: ${err.message}`;
+      } finally {
+        btn.disabled = false;
+        btn.innerHTML = '<span>&#9881; Execute OGC Process</span>';
+      }
+    }
+
+    function renderClassificationBars(classes) {
+      const container = document.getElementById('classification-bars');
+      container.innerHTML = `
+        <div class="class-item">
+          <div class="class-header"><span>Level Terrain (<5m)</span><span>${classes.level_terrain_pct}%</span></div>
+          <div class="class-bar-bg"><div class="class-bar-fill fill-level" style="width: ${classes.level_terrain_pct}%;"></div></div>
+        </div>
+        <div class="class-item">
+          <div class="class-header"><span>Slightly Rugged (5-15m)</span><span>${classes.slightly_rugged_pct}%</span></div>
+          <div class="class-bar-bg"><div class="class-bar-fill fill-slight" style="width: ${classes.slightly_rugged_pct}%;"></div></div>
+        </div>
+        <div class="class-item">
+          <div class="class-header"><span>Moderately Rugged (15-30m)</span><span>${classes.moderately_rugged_pct}%</span></div>
+          <div class="class-bar-bg"><div class="class-bar-fill fill-moderate" style="width: ${classes.moderately_rugged_pct}%;"></div></div>
+        </div>
+        <div class="class-item">
+          <div class="class-header"><span>Highly Rugged (30-60m)</span><span>${classes.highly_rugged_pct}%</span></div>
+          <div class="class-bar-bg"><div class="class-bar-fill fill-high" style="width: ${classes.highly_rugged_pct}%;"></div></div>
+        </div>
+        <div class="class-item">
+          <div class="class-header"><span>Extremely Rugged (>60m)</span><span>${classes.extremely_rugged_pct}%</span></div>
+          <div class="class-bar-bg"><div class="class-bar-fill fill-extreme" style="width: ${classes.extremely_rugged_pct}%;"></div></div>
+        </div>
+      `;
+    }
+
+    function renderLandformBars(classes) {
+      const container = document.getElementById('classification-bars');
+      container.innerHTML = Object.entries(classes).map(([k, v]) => `
+        <div class="class-item">
+          <div class="class-header"><span>${k.replace(/_/g, ' ')}</span><span>${v}%</span></div>
+          <div class="class-bar-bg"><div class="class-bar-fill fill-slight" style="width: ${v}%;"></div></div>
+        </div>
+      `).join('');
+    }
+
+    window.onload = initMap;
+  </script>
+</body>
+</html>
