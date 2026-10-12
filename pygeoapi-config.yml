@@ -1,0 +1,68 @@
+server:
+  bind:
+    host: 0.0.0.0
+    port: 5000
+  url: http://localhost:5000
+  mimetype: application/json; charset=UTF-8
+  encoding: utf-8
+  gzip: false
+  languages:
+    - en-US
+  cors: true
+  pretty_print: true
+  limit: 10
+  map:
+    url: https://tile.openstreetmap.org/{z}/{x}/{y}.png
+    attribution: '&copy; <a href="https://openstreetmap.org/copyright">OpenStreetMap contributors</a>'
+  manager:
+    name: TinyDB
+    connection: /home/chaitanya/sem5/CyberGIS/mid_eval/pygeoapi-process-manager.db
+    output_dir: /home/chaitanya/sem5/CyberGIS/mid_eval/outputs
+
+logging:
+  level: INFO
+
+metadata:
+  identification:
+    title:
+      en: Bhoonidhi CartoDEM OGC Geoprocessing Service
+    description:
+      en: Standards-compliant OGC API - Processes service over ISRO Bhoonidhi CartoDEM rasters for on-demand Terrain Ruggedness Index (TRI) and Landform geoprocessing.
+    keywords:
+      en:
+        - Bhoonidhi
+        - CartoDEM
+        - ISRO
+        - OGC API - Processes
+        - TRI
+        - Terrain Ruggedness Index
+        - TPI
+        - CyberGIS
+    keywords_type: theme
+    terms_of_service: https://bhoonidhi.nrsc.gov.in
+    url: http://localhost:5000
+  license:
+    name: CC-BY-4.0
+    url: https://creativecommons.org/licenses/by/4.0/
+  provider:
+    name: Chaitanya Soni
+    url: http://localhost:5000
+  contact:
+    name: Chaitanya Soni
+    position: CyberGIS Student Researcher
+    address: CyberGIS Lab
+    city: Hyderabad
+    country: India
+    email: chaitanya@example.com
+    role: pointOfContact
+
+resources:
+  cartodem-tri:
+    type: process
+    processor:
+      name: processes.cartodem_tri.CartoDEMTRIProcessor
+
+  cartodem-tpi:
+    type: process
+    processor:
+      name: processes.cartodem_tpi.CartoDEMTPIProcessor

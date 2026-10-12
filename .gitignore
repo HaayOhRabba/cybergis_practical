@@ -1,0 +1,11 @@
+.venv/
+__pycache__/
+*.pyc
+*.tif
+*.tiff
+*.db
+*.lock
+.pytest_cache/
+*.log
+!data/.gitkeep
+!outputs/.gitkeep
