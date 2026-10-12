@@ -511,15 +511,15 @@
           <div class="stat-cards">
             <div class="stat-card">
               <div class="val" id="stat-min">-</div>
-              <div class="lbl">Min Ruggedness</div>
+              <div class="lbl" id="lbl-min">Min Ruggedness</div>
             </div>
             <div class="stat-card">
               <div class="val" id="stat-mean">-</div>
-              <div class="lbl">Mean TRI (m)</div>
+              <div class="lbl" id="lbl-mean">Mean TRI (m)</div>
             </div>
             <div class="stat-card">
               <div class="val" id="stat-max">-</div>
-              <div class="lbl">Max Ruggedness</div>
+              <div class="lbl" id="lbl-max">Max Ruggedness</div>
             </div>
           </div>
 
@@ -741,10 +741,16 @@
           document.getElementById('stat-min').textContent = data.statistics.min.toFixed(1);
           document.getElementById('stat-mean').textContent = data.statistics.mean.toFixed(1);
           document.getElementById('stat-max').textContent = data.statistics.max.toFixed(1);
+          document.getElementById('lbl-min').textContent = 'Min TRI';
+          document.getElementById('lbl-mean').textContent = 'Mean TRI (m)';
+          document.getElementById('lbl-max').textContent = 'Max TRI';
         } else if (data.tpi_statistics) {
           document.getElementById('stat-min').textContent = data.tpi_statistics.min.toFixed(1);
           document.getElementById('stat-mean').textContent = data.tpi_statistics.mean.toFixed(1);
           document.getElementById('stat-max').textContent = data.tpi_statistics.max.toFixed(1);
+          document.getElementById('lbl-min').textContent = 'Min TPI (Valley)';
+          document.getElementById('lbl-mean').textContent = 'Mean TPI (m)';
+          document.getElementById('lbl-max').textContent = 'Max TPI (Ridge)';
         }
 
         if (data.ruggedness_classification) {
